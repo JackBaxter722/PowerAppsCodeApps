@@ -22,6 +22,7 @@ import { NewInvoiceDialog } from '@/components/dialogs/NewInvoiceDialog'
 import { PageHeader } from '@/components/PageHeader'
 import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
+import { TableSkeleton } from '@/components/skeletons'
 import { InvoiceStatusBadge } from '@/components/StatusBadge'
 import { useInvoices } from '@/hooks/queries'
 import { exportCsv } from '@/lib/exportCsv'
@@ -113,7 +114,7 @@ export default function InvoicesPage() {
         isLoading={invoicesQuery.isLoading}
         isError={invoicesQuery.isError}
         data={invoicesQuery.data}
-        loadingLabel="Loading invoices…"
+        skeleton={<TableSkeleton rows={6} />}
       >
         {() => (
           <Table aria-label="Invoices">

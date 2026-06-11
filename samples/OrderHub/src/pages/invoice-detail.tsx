@@ -21,6 +21,7 @@ import {
   ReceiptRegular,
 } from '@fluentui/react-icons'
 import { AppLink } from '@/components/AppLink'
+import { Breadcrumbs } from '@/components/Breadcrumbs'
 import { PageHeader } from '@/components/PageHeader'
 import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
@@ -71,6 +72,12 @@ export default function InvoiceDetailPage() {
       >
         {(invoice) => (
           <>
+            <Breadcrumbs
+              items={[
+                { label: 'Invoices', to: '/invoices' },
+                { label: invoice.invoiceNumber },
+              ]}
+            />
             <PageToolbar ariaLabel="Invoice actions">
               <ToolbarButton
                 icon={<ArrowLeftRegular />}

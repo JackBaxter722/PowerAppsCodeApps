@@ -20,6 +20,8 @@ interface QueryStateProps<T> {
   children: (data: NonNullable<T>) => ReactNode
   loadingLabel?: string
   emptyLabel?: string
+  // Optional skeleton to render while loading instead of the spinner.
+  skeleton?: ReactNode
 }
 
 export function QueryState<T>({
@@ -29,10 +31,12 @@ export function QueryState<T>({
   children,
   loadingLabel = 'Loading…',
   emptyLabel = 'Not found.',
+  skeleton,
 }: QueryStateProps<T>) {
   const styles = useStyles()
 
   if (isLoading) {
+    if (skeleton) return <>{skeleton}</>
     return (
       <div className={styles.center}>
         <Spinner size="medium" label={loadingLabel} />

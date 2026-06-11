@@ -16,3 +16,15 @@ export async function createProduct(input: NewProductInput): Promise<Product> {
   db.products.unshift(product)
   return delay(product, 80)
 }
+
+export async function updateProduct(product: Product): Promise<Product> {
+  const index = db.products.findIndex((p) => p.id === product.id)
+  if (index >= 0) db.products[index] = { ...product }
+  return delay(product, 80)
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  const index = db.products.findIndex((p) => p.id === id)
+  if (index >= 0) db.products.splice(index, 1)
+  return delay(undefined, 80)
+}

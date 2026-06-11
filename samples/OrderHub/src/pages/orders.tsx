@@ -29,6 +29,7 @@ import { NewOrderDialog } from '@/components/dialogs/NewOrderDialog'
 import { PageHeader } from '@/components/PageHeader'
 import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
+import { TableSkeleton } from '@/components/skeletons'
 import { OrderStatusBadge } from '@/components/StatusBadge'
 import { useOrders } from '@/hooks/queries'
 import { exportCsv } from '@/lib/exportCsv'
@@ -192,7 +193,7 @@ export default function OrdersPage() {
         isLoading={ordersQuery.isLoading}
         isError={ordersQuery.isError}
         data={ordersQuery.data}
-        loadingLabel="Loading orders…"
+        skeleton={<TableSkeleton />}
       >
         {() => (
           <DataGrid

@@ -1,6 +1,6 @@
 // Renders the FluentProvider and supplies the light/dark toggle via context.
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   FluentProvider,
   webDarkTheme,
@@ -12,8 +12,19 @@ import {
   type ThemeMode,
 } from '@/lib/theme-context'
 
+const STORAGE_KEY = 'orderhub-theme'
+
+function initialMode(): ThemeMode {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  return stored === 'dark' ? 'dark' : 'light'
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>('light')
+  const [mode, setMode] = useState<ThemeMode>(initialMode)
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, mode)
+  }, [mode])
 
   const value = useMemo<ThemeContextValue>(
     () => ({

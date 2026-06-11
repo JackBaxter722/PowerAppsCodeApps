@@ -1,26 +1,36 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   DndContext,
+  DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   closestCorners,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import {
   Caption1,
   Card,
   Dropdown,
-  makeStyles,
   Option,
   Text,
-  tokens,
   ToolbarButton,
   ToolbarDivider,
   ToolbarToggleButton,
+  makeStyles,
+  tokens,
 } from '@fluentui/react-components'
 import {
   ArrowClockwiseRegular,
@@ -32,6 +42,7 @@ import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
 import { useOrders, useUpdateOrderStatus } from '@/hooks/queries'
 import { formatCurrency } from '@/lib/format'
+import { track } from '@/lib/telemetry'
 import { type Order, type OrderStatus, ORDER_STATUSES } from '@/services/types'
 
 const useStyles = makeStyles({
@@ -64,6 +75,7 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: tokens.spacingVerticalS,
     marginTop: tokens.spacingVerticalS,
+    minHeight: '24px',
   },
   card: {
     padding: tokens.spacingVerticalS,
@@ -74,25 +86,23 @@ const useStyles = makeStyles({
   },
 })
 
-function OrderCard({ order, compact }: { order: Order; compact: boolean }) {
-  const styles = useStyles()
-  const navigate = useNavigate()
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: order.id })
+type Board = Record<OrderStatus, string[]>
 
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined
+function emptyBoard(): Board {
+  return { new: [], picking: [], packed: [], shipped: [], delivered: [] }
+}
 
+function OrderCardContent({
+  order,
+  compact,
+  className,
+}: {
+  order: Order
+  compact: boolean
+  className: string
+}) {
   return (
-    <Card
-      ref={setNodeRef}
-      style={style}
-      className={`${styles.card} ${isDragging ? styles.cardDragging : ''}`}
-      onDoubleClick={() => navigate(`/orders/${order.id}`)}
-      {...listeners}
-      {...attributes}
-    >
+    <Card className={className}>
       <Text weight="semibold">{order.orderNumber}</Text>
       <Caption1 block>{order.customerName}</Caption1>
       {!compact && <Caption1 block>{formatCurrency(order.total)}</Caption1>}
@@ -100,13 +110,49 @@ function OrderCard({ order, compact }: { order: Order; compact: boolean }) {
   )
 }
 
+function SortableCard({
+  order,
+  compact,
+}: {
+  order: Order
+  compact: boolean
+}) {
+  const styles = useStyles()
+  const navigate = useNavigate()
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: order.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      onDoubleClick={() => navigate(`/orders/${order.id}`)}
+      {...attributes}
+      {...listeners}
+    >
+      <OrderCardContent
+        order={order}
+        compact={compact}
+        className={`${styles.card} ${isDragging ? styles.cardDragging : ''}`}
+      />
+    </div>
+  )
+}
+
 function Column({
   status,
-  orders,
+  ids,
+  ordersById,
   compact,
 }: {
   status: OrderStatus
-  orders: Order[]
+  ids: string[]
+  ordersById: Map<string, Order>
   compact: boolean
 }) {
   const styles = useStyles()
@@ -119,13 +165,18 @@ function Column({
     >
       <div className={styles.columnHeader}>
         <Text weight="semibold">{status}</Text>
-        <Caption1>{orders.length}</Caption1>
+        <Caption1>{ids.length}</Caption1>
       </div>
-      <div className={styles.cardList}>
-        {orders.map((order) => (
-          <OrderCard key={order.id} order={order} compact={compact} />
-        ))}
-      </div>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <div className={styles.cardList}>
+          {ids.map((id) => {
+            const order = ordersById.get(id)
+            return order ? (
+              <SortableCard key={id} order={order} compact={compact} />
+            ) : null
+          })}
+        </div>
+      </SortableContext>
     </div>
   )
 }
@@ -136,51 +187,91 @@ export default function FulfillmentPage() {
   const updateStatus = useUpdateOrderStatus()
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  // Optimistic local override so cards move instantly while the mutation runs.
-  const [override, setOverride] = useState<Record<string, OrderStatus>>({})
+  const [board, setBoard] = useState<Board>(emptyBoard)
+  const [activeId, setActiveId] = useState<string | null>(null)
   const [customer, setCustomer] = useState('')
   const [compact, setCompact] = useState(false)
+
+  const ordersById = useMemo(() => {
+    const map = new Map<string, Order>()
+    for (const o of ordersQuery.data ?? []) map.set(o.id, o)
+    return map
+  }, [ordersQuery.data])
 
   const customers = useMemo(
     () => [...new Set((ordersQuery.data ?? []).map((o) => o.customerName))].sort(),
     [ordersQuery.data],
   )
 
-  const grouped = useMemo(() => {
-    const map: Record<OrderStatus, Order[]> = {
-      new: [],
-      picking: [],
-      packed: [],
-      shipped: [],
-      delivered: [],
-    }
+  // Seed the board from query data whenever the set of orders changes (load,
+  // create, delete). Local reordering is preserved between those events.
+  const idSignature = (ordersQuery.data ?? [])
+    .map((o) => o.id)
+    .sort()
+    .join(',')
+  useEffect(() => {
+    const next = emptyBoard()
     for (const order of ordersQuery.data ?? []) {
-      if (customer && order.customerName !== customer) continue
-      const status = override[order.id] ?? order.status
-      map[status].push({ ...order, status })
+      next[order.status].push(order.id)
     }
-    return map
-  }, [ordersQuery.data, override, customer])
+    setBoard(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idSignature])
+
+  function findColumn(id: string): OrderStatus | undefined {
+    if (ORDER_STATUSES.includes(id as OrderStatus)) return id as OrderStatus
+    return ORDER_STATUSES.find((status) => board[status].includes(id))
+  }
 
   function handleDragEnd(event: DragEndEvent) {
-    const orderId = String(event.active.id)
-    const target = event.over?.id as OrderStatus | undefined
-    if (!target || !ORDER_STATUSES.includes(target)) return
+    setActiveId(null)
+    const activeOrderId = String(event.active.id)
+    if (!event.over) return
 
-    const current = override[orderId] ?? ordersQuery.data?.find((o) => o.id === orderId)?.status
-    if (current === target) return
+    const from = findColumn(activeOrderId)
+    const to = findColumn(String(event.over.id))
+    if (!from || !to) return
 
-    setOverride((prev) => ({ ...prev, [orderId]: target }))
-    updateStatus.mutate({ id: orderId, status: target })
+    if (from === to) {
+      const oldIndex = board[from].indexOf(activeOrderId)
+      const overIndex = board[to].indexOf(String(event.over.id))
+      if (oldIndex !== overIndex && overIndex >= 0) {
+        setBoard((prev) => ({
+          ...prev,
+          [from]: arrayMove(prev[from], oldIndex, overIndex),
+        }))
+      }
+      return
+    }
+
+    // Cross-column move: relocate the card and persist the new status.
+    setBoard((prev) => {
+      const source = prev[from].filter((id) => id !== activeOrderId)
+      const overId = String(event.over!.id)
+      const target = [...prev[to]]
+      const insertAt = target.indexOf(overId)
+      target.splice(insertAt >= 0 ? insertAt : target.length, 0, activeOrderId)
+      return { ...prev, [from]: source, [to]: target }
+    })
+    updateStatus.mutate({ id: activeOrderId, status: to })
+    track('order_status_changed', { id: activeOrderId, status: to })
+  }
+
+  const activeOrder = activeId ? ordersById.get(activeId) : undefined
+
+  function visibleIds(status: OrderStatus): string[] {
+    if (!customer) return board[status]
+    return board[status].filter((id) => ordersById.get(id)?.customerName === customer)
   }
 
   return (
     <>
       <PageHeader
         title="Fulfillment board"
-        subtitle="Drag orders between stages to update their status. Double-click a card to open it."
+        subtitle="Drag to reorder or move between stages. Keyboard: focus a card, Space, arrows, Space."
       />
       <PageToolbar
         ariaLabel="Fulfillment actions"
@@ -198,8 +289,11 @@ export default function FulfillmentPage() {
         </ToolbarButton>
         <ToolbarButton
           icon={<ArrowResetRegular />}
-          onClick={() => setOverride({})}
-          disabled={Object.keys(override).length === 0}
+          onClick={() => {
+            const next = emptyBoard()
+            for (const order of ordersQuery.data ?? []) next[order.status].push(order.id)
+            setBoard(next)
+          }}
         >
           Reset board
         </ToolbarButton>
@@ -225,6 +319,7 @@ export default function FulfillmentPage() {
           ))}
         </Dropdown>
       </PageToolbar>
+
       <QueryState
         isLoading={ordersQuery.isLoading}
         isError={ordersQuery.isError}
@@ -235,18 +330,32 @@ export default function FulfillmentPage() {
           <DndContext
             sensors={sensors}
             collisionDetection={closestCorners}
+            onDragStart={(event: DragStartEvent) =>
+              setActiveId(String(event.active.id))
+            }
             onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveId(null)}
           >
             <div className={styles.board}>
               {ORDER_STATUSES.map((status) => (
                 <Column
                   key={status}
                   status={status}
-                  orders={grouped[status]}
+                  ids={visibleIds(status)}
+                  ordersById={ordersById}
                   compact={compact}
                 />
               ))}
             </div>
+            <DragOverlay>
+              {activeOrder ? (
+                <OrderCardContent
+                  order={activeOrder}
+                  compact={compact}
+                  className={styles.card}
+                />
+              ) : null}
+            </DragOverlay>
           </DndContext>
         )}
       </QueryState>

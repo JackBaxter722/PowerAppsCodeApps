@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   DonutChart,
   LineChart,
@@ -24,6 +25,7 @@ import {
 import { PageHeader } from '@/components/PageHeader'
 import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
+import { CardsSkeleton } from '@/components/skeletons'
 import { useDashboardMetrics } from '@/hooks/queries'
 import { exportCsv } from '@/lib/exportCsv'
 import { formatCurrency } from '@/lib/format'
@@ -73,12 +75,15 @@ function KpiCard({ label, value }: { label: string; value: string }) {
 
 function Charts({ metrics }: { metrics: DashboardMetrics }) {
   const styles = useStyles()
+  const navigate = useNavigate()
 
   const donutData: ChartProps = {
     chartTitle: 'Orders by status',
     chartData: metrics.ordersByStatus.map((d) => ({
       legend: d.status,
       data: d.count,
+      // Clicking a slice deep-links into the filtered orders list.
+      onClick: () => navigate(`/orders?status=${d.status}`),
     })),
   }
 
@@ -100,6 +105,8 @@ function Charts({ metrics }: { metrics: DashboardMetrics }) {
     x: p.name,
     y: p.revenue,
     legend: p.name,
+    // Clicking a bar searches the product catalog for that product.
+    onClick: () => navigate(`/products?q=${encodeURIComponent(p.name)}`),
   }))
 
   return (
@@ -191,7 +198,7 @@ export default function DashboardPage() {
         isLoading={metricsQuery.isLoading}
         isError={metricsQuery.isError}
         data={metricsQuery.data}
-        loadingLabel="Loading metrics…"
+        skeleton={<CardsSkeleton cards={4} />}
       >
         {(metrics) => (
           <>

@@ -14,6 +14,20 @@ export const TOASTER_ID = 'orderhub-toaster'
 
 type Intent = 'success' | 'info' | 'warning' | 'error'
 
+// Module-level error notifier so non-React code (the QueryClient's MutationCache)
+// can surface failures as toasts. The layout registers the real implementation.
+let errorNotifier: ((title: string, body?: string) => void) | null = null
+
+export function registerErrorNotifier(
+  fn: ((title: string, body?: string) => void) | null,
+) {
+  errorNotifier = fn
+}
+
+export function notifyError(title: string, body?: string) {
+  errorNotifier?.(title, body)
+}
+
 export function useNotify() {
   const { dispatchToast } = useToastController(TOASTER_ID)
 

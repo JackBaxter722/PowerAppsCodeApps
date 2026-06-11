@@ -13,6 +13,7 @@ import {
 } from '@/services/metricsService'
 import {
   createOrder,
+  deleteOrder,
   getOrder,
   getOrders,
   updateOrderStatus,
@@ -28,11 +29,13 @@ import {
 } from '@/services/invoicesService'
 import {
   createProduct,
+  deleteProduct,
   getProduct,
   getProducts,
+  updateProduct,
   type NewProductInput,
 } from '@/services/productsService'
-import { type OrderStatus } from '@/services/types'
+import { type Order, type Product, type OrderStatus } from '@/services/types'
 
 export const queryKeys = {
   orders: ['orders'] as const,
@@ -118,6 +121,77 @@ export function useCreateProduct() {
     mutationFn: (input: NewProductInput) => createProduct(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.products })
+      invalidateMetrics(queryClient)
+    },
+  })
+}
+
+export function useUpdateProduct() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (product: Product) => updateProduct(product),
+    // Optimistically patch the cached list, rolling back on failure.
+    onMutate: async (product) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.products })
+      const previous = queryClient.getQueryData<Product[]>(queryKeys.products)
+      queryClient.setQueryData<Product[]>(queryKeys.products, (old) =>
+        (old ?? []).map((p) => (p.id === product.id ? product : p)),
+      )
+      return { previous }
+    },
+    onError: (_err, _product, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.products, context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products })
+    },
+  })
+}
+
+export function useDeleteProduct() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteProduct(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.products })
+      const previous = queryClient.getQueryData<Product[]>(queryKeys.products)
+      queryClient.setQueryData<Product[]>(queryKeys.products, (old) =>
+        (old ?? []).filter((p) => p.id !== id),
+      )
+      return { previous }
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.products, context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products })
+    },
+  })
+}
+
+export function useDeleteOrder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteOrder(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.orders })
+      const previous = queryClient.getQueryData<Order[]>(queryKeys.orders)
+      queryClient.setQueryData<Order[]>(queryKeys.orders, (old) =>
+        (old ?? []).filter((o) => o.id !== id),
+      )
+      return { previous }
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.orders, context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders })
       invalidateMetrics(queryClient)
     },
   })

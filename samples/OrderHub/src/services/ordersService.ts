@@ -59,6 +59,16 @@ export async function createOrder(input: NewOrderInput): Promise<Order> {
   return delay(order, 80)
 }
 
+export async function deleteOrder(id: string): Promise<void> {
+  const orderIndex = db.orders.findIndex((o) => o.id === id)
+  if (orderIndex >= 0) db.orders.splice(orderIndex, 1)
+  // Cascade: remove the order's line items.
+  for (let i = db.orderLineItems.length - 1; i >= 0; i--) {
+    if (db.orderLineItems[i].orderId === id) db.orderLineItems.splice(i, 1)
+  }
+  return delay(undefined, 80)
+}
+
 // Mutates shared in-memory state so the change is reflected on other pages
 // within the session (used by the fulfillment board drag-and-drop).
 export async function updateOrderStatus(

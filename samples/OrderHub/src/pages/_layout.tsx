@@ -1,21 +1,17 @@
-import { Suspense } from 'react'
-import {
-  Outlet,
-  useLocation,
-  useNavigate,
-} from 'react-router-dom'
+import { Suspense, useEffect, useState } from 'react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useKeytipRef } from '@fluentui-contrib/react-keytips'
 import {
-  Button,
+  NavDrawer,
+  NavDrawerBody,
+  NavItem,
+  type OnNavItemSelectData,
+} from '@fluentui/react-nav-preview'
+import {
   makeStyles,
   Spinner,
-  Tab,
-  TabList,
-  Text,
   Toaster,
   tokens,
-  type SelectTabEvent,
-  type SelectTabData,
 } from '@fluentui/react-components'
 import {
   AppsListRegular,
@@ -25,39 +21,26 @@ import {
   DataBarVerticalRegular,
   DocumentRegular,
   ReceiptRegular,
-  WeatherMoonRegular,
-  WeatherSunnyRegular,
 } from '@fluentui/react-icons'
+import { AppHeader } from '@/components/AppHeader'
 import { useDeepLink } from '@/hooks/useDeepLink'
-import { useThemeMode } from '@/lib/theme-context'
-import { TOASTER_ID } from '@/lib/toast'
+import { TOASTER_ID, registerErrorNotifier, useNotify } from '@/lib/toast'
+import { trackPageView } from '@/lib/telemetry'
 
 const useStyles = makeStyles({
   root: {
-    display: 'grid',
-    gridTemplateColumns: '220px 1fr',
-    gridTemplateRows: 'auto 1fr',
+    display: 'flex',
+    flexDirection: 'column',
     height: '100vh',
     backgroundColor: tokens.colorNeutralBackground1,
   },
-  header: {
-    gridColumn: '1 / -1',
+  body: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: `${tokens.spacingVerticalM} ${tokens.spacingHorizontalL}`,
-    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
-  },
-  brand: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: tokens.spacingHorizontalS,
-  },
-  nav: {
-    borderRight: `1px solid ${tokens.colorNeutralStroke2}`,
-    padding: tokens.spacingVerticalM,
+    flexGrow: 1,
+    minHeight: 0,
   },
   content: {
+    flexGrow: 1,
     overflow: 'auto',
     padding: tokens.spacingHorizontalXL,
   },
@@ -85,17 +68,17 @@ const NAV: NavEntry[] = [
   { value: '/assistant', label: 'Assistant', icon: ChatRegular, keytip: 'a' },
 ]
 
-function NavItem({ entry }: { entry: NavEntry }) {
-  // Each nav item registers a keytip (Alt to reveal) via the contrib library.
-  const keytipRef = useKeytipRef<HTMLButtonElement>({
+function NavEntryItem({ entry }: { entry: NavEntry }) {
+  // Each nav item registers a keytip (press Alt to reveal) via the contrib lib.
+  const keytipRef = useKeytipRef<HTMLAnchorElement | HTMLButtonElement>({
     content: entry.keytip.toUpperCase(),
     keySequences: [entry.keytip],
   })
   const Icon = entry.icon
   return (
-    <Tab ref={keytipRef} value={entry.value} icon={<Icon />}>
+    <NavItem ref={keytipRef} value={entry.value} icon={<Icon />}>
       {entry.label}
-    </Tab>
+    </NavItem>
   )
 }
 
@@ -110,57 +93,59 @@ export default function Layout() {
   const styles = useStyles()
   const navigate = useNavigate()
   const location = useLocation()
-  const { mode, toggle } = useThemeMode()
+  const [navOpen, setNavOpen] = useState(true)
+  const notify = useNotify()
 
   // Read Power Apps getContext query params on startup and deep-link accordingly.
   useDeepLink()
 
-  function onTabSelect(_: SelectTabEvent, data: SelectTabData) {
-    navigate(data.value as string)
+  // Let non-React code (the mutation cache) raise error toasts.
+  useEffect(() => {
+    registerErrorNotifier((title, body) =>
+      notify(title, { body, intent: 'error' }),
+    )
+    return () => registerErrorNotifier(null)
+  }, [notify])
+
+  // Emit a telemetry page-view whenever the route changes.
+  useEffect(() => {
+    trackPageView(location.pathname)
+  }, [location.pathname])
+
+  function onNavItemSelect(_: unknown, data: OnNavItemSelectData) {
+    if (typeof data.value === 'string') navigate(data.value)
   }
 
   return (
     <div className={styles.root}>
-      <header className={styles.header}>
-        <div className={styles.brand}>
-          <BoxRegular fontSize={24} />
-          <Text size={500} weight="bold">
-            OrderHub
-          </Text>
-        </div>
-        <Button
-          appearance="subtle"
-          icon={mode === 'light' ? <WeatherMoonRegular /> : <WeatherSunnyRegular />}
-          onClick={toggle}
-          aria-label="Toggle theme"
-        >
-          {mode === 'light' ? 'Dark' : 'Light'}
-        </Button>
-      </header>
+      <AppHeader onToggleNav={() => setNavOpen((o) => !o)} />
 
-      <nav className={styles.nav}>
-        <TabList
-          vertical
+      <div className={styles.body}>
+        <NavDrawer
+          open={navOpen}
+          type="inline"
           selectedValue={selectedTab(location.pathname)}
-          onTabSelect={onTabSelect}
+          onNavItemSelect={onNavItemSelect}
         >
-          {NAV.map((entry) => (
-            <NavItem key={entry.value} entry={entry} />
-          ))}
-        </TabList>
-      </nav>
+          <NavDrawerBody>
+            {NAV.map((entry) => (
+              <NavEntryItem key={entry.value} entry={entry} />
+            ))}
+          </NavDrawerBody>
+        </NavDrawer>
 
-      <main className={styles.content}>
-        <Suspense
-          fallback={
-            <div className={styles.loading}>
-              <Spinner label="Loading…" />
-            </div>
-          }
-        >
-          <Outlet />
-        </Suspense>
-      </main>
+        <main className={styles.content}>
+          <Suspense
+            fallback={
+              <div className={styles.loading}>
+                <Spinner label="Loading…" />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
+        </main>
+      </div>
 
       <Toaster toasterId={TOASTER_ID} />
     </div>

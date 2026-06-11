@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useResizeHandle } from '@fluentui-contrib/react-resize-handle'
 import {
@@ -23,16 +24,20 @@ import {
 import {
   ArrowLeftRegular,
   ArrowSortRegular,
+  DeleteRegular,
   PrintRegular,
   ReceiptRegular,
 } from '@fluentui/react-icons'
 import { AppLink } from '@/components/AppLink'
+import { Breadcrumbs } from '@/components/Breadcrumbs'
+import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
 import { PageHeader } from '@/components/PageHeader'
 import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
 import { OrderStatusBadge } from '@/components/StatusBadge'
-import { useOrder, useUpdateOrderStatus } from '@/hooks/queries'
+import { useDeleteOrder, useOrder, useUpdateOrderStatus } from '@/hooks/queries'
 import { formatCurrency, formatDate } from '@/lib/format'
+import { track } from '@/lib/telemetry'
 import { useNotify } from '@/lib/toast'
 import { ORDER_STATUSES, type OrderStatus } from '@/services/types'
 
@@ -90,6 +95,8 @@ export default function OrderDetailPage() {
   const { orderId } = useParams()
   const orderQuery = useOrder(orderId)
   const updateStatus = useUpdateOrderStatus()
+  const deleteOrder = useDeleteOrder()
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   function changeStatus(status: OrderStatus) {
     if (!orderId) return
@@ -97,6 +104,17 @@ export default function OrderDetailPage() {
       { id: orderId, status },
       { onSuccess: () => notify('Order status updated', { body: status }) },
     )
+  }
+
+  function handleDelete() {
+    if (!orderId) return
+    deleteOrder.mutate(orderId, {
+      onSuccess: () => {
+        track('order_deleted', { id: orderId })
+        notify('Order deleted')
+        navigate('/orders')
+      },
+    })
   }
 
   // Resizable master/detail split powered by @fluentui-contrib/react-resize-handle.
@@ -123,6 +141,12 @@ export default function OrderDetailPage() {
       >
         {(order) => (
           <>
+          <Breadcrumbs
+            items={[
+              { label: 'Orders', to: '/orders' },
+              { label: order.orderNumber },
+            ]}
+          />
           <PageToolbar ariaLabel="Order actions">
             <ToolbarButton
               icon={<ArrowLeftRegular />}
@@ -168,7 +192,21 @@ export default function OrderDetailPage() {
             >
               Print
             </ToolbarButton>
+            <ToolbarButton
+              icon={<DeleteRegular />}
+              onClick={() => setConfirmDelete(true)}
+            >
+              Delete
+            </ToolbarButton>
           </PageToolbar>
+
+          <ConfirmDialog
+            open={confirmDelete}
+            onOpenChange={setConfirmDelete}
+            title="Delete order"
+            message={`Delete ${order.orderNumber}? This cannot be undone.`}
+            onConfirm={handleDelete}
+          />
 
           <div ref={wrapperRef} className={styles.splitWrapper}>
             <div ref={elementRef} className={styles.master}>

@@ -16,8 +16,18 @@ It demonstrates a modern front-end stack running inside the Power Apps host, and
 | Resizable panels | [`@fluentui-contrib/react-resize-handle`](https://github.com/microsoft/fluentui-contrib) | Order detail |
 | Keyboard tips | [`@fluentui-contrib/react-keytips`](https://github.com/microsoft/fluentui-contrib) | Nav rail (press `Alt`) |
 | Chat UI | [`@fluentui-contrib/react-chat`](https://github.com/microsoft/fluentui-contrib) | Assistant |
-| Drag & drop | [`@dnd-kit`](https://dndkit.com/) | Fulfillment board |
+| Collapsible nav | [`@fluentui/react-nav-preview`](https://react.fluentui.dev/) | App shell |
+| Drag & drop | [`@dnd-kit`](https://dndkit.com/) core + sortable | Fulfillment board |
 | Data / state | [TanStack Query](https://tanstack.com/query) + [TanStack Table](https://tanstack.com/table) | hooks + Products |
+
+## App shell
+
+- **Header** (`src/components/AppHeader.tsx`) — left-aligned logo + title, a
+  **typeahead SearchBox** (`GlobalSearch`, a Fluent `Combobox`) that searches across
+  orders, invoices, and products and navigates to the chosen record, a theme toggle,
+  and an **Avatar** whose **Popover** shows the signed-in user from `getContext()`.
+- **Collapsible NavDrawer** — the header hamburger minimizes/expands the side nav.
+  Nav items carry keytips (press `Alt`).
 
 ## Domain
 
@@ -29,14 +39,21 @@ TanStack Query hooks in `src/hooks/queries.ts`.
 
 ## Pages
 
-- `/` — Dashboard (KPI cards + charts)
+- `/` — Dashboard (KPI cards + **interactive charts**: click a donut slice or bar to
+  deep-link into the matching filtered list)
 - `/orders` — Orders (virtualized, sortable, filterable grid)
-- `/orders/:orderId` — Order detail (resizable master/detail split)
-- `/fulfillment` — Drag-and-drop fulfillment board
-- `/products` — Product catalog (TanStack Table)
+- `/orders/:orderId` — Order detail (resizable master/detail split, breadcrumb, delete)
+- `/fulfillment` — Fulfillment board: **dnd-kit** sortable within columns + across stages,
+  drag overlay, and keyboard drag
+- `/products` — Product catalog: **fuller TanStack Table** with paging, global filter,
+  column visibility, row selection, bulk delete, and per-row edit/delete dialogs
 - `/invoices` — Invoices list
-- `/invoices/:invoiceId` — Invoice detail
+- `/invoices/:invoiceId` — Invoice detail (breadcrumb, mark-as-paid)
 - `/assistant` — Chat assistant
+
+Records created/edited/deleted through the dialogs use TanStack Query mutations with
+**optimistic updates** (rollback on error); failures raise an error toast. Page views
+and key actions emit events through `src/lib/telemetry.ts`.
 
 ## Per-page toolbars
 
@@ -101,3 +118,15 @@ npx power-apps push
 ```
 
 `npx power-apps push` returns a Power Apps URL to run the published app.
+
+## Testing
+
+```bash
+npm run lint        # eslint
+npm test            # vitest unit tests (parseDeepLink)
+npm run test:e2e    # playwright smoke tests (run `npx playwright install chromium` first)
+```
+
+- Unit tests cover the deep-link parser in `src/lib/parseDeepLink.test.ts`.
+- `e2e/orderhub.spec.ts` builds + serves a static preview and checks navigation,
+  deep linking, and the global search.

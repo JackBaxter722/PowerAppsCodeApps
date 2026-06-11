@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Button,
   Dialog,
@@ -13,43 +13,61 @@ import {
   Option,
   Spinner,
 } from '@fluentui/react-components'
-import { useCreateProduct } from '@/hooks/queries'
+import { useCreateProduct, useUpdateProduct } from '@/hooks/queries'
 import { useNotify } from '@/lib/toast'
+import { track } from '@/lib/telemetry'
+import { type Product } from '@/services/types'
 
 const CATEGORIES = ['Furniture', 'Electronics', 'Accessories', 'Lighting', 'Wellness']
 
-interface NewProductDialogProps {
+interface ProductDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  // When provided the dialog edits the product; otherwise it creates a new one.
+  product?: Product
 }
 
-export function NewProductDialog({ open, onOpenChange }: NewProductDialogProps) {
+export function ProductDialog({ open, onOpenChange, product }: ProductDialogProps) {
   const createProduct = useCreateProduct()
+  const updateProduct = useUpdateProduct()
   const notify = useNotify()
+  const isEdit = !!product
+
   const [name, setName] = useState('')
   const [sku, setSku] = useState('')
   const [category, setCategory] = useState(CATEGORIES[0])
   const [unitPrice, setUnitPrice] = useState('0')
   const [stock, setStock] = useState('0')
 
-  function reset() {
-    setName('')
-    setSku('')
-    setCategory(CATEGORIES[0])
-    setUnitPrice('0')
-    setStock('0')
-  }
+  // Seed the form whenever the dialog opens (for edit) or resets (for create).
+  useEffect(() => {
+    if (!open) return
+    setName(product?.name ?? '')
+    setSku(product?.sku ?? '')
+    setCategory(product?.category ?? CATEGORIES[0])
+    setUnitPrice(String(product?.unitPrice ?? 0))
+    setStock(String(product?.stock ?? 0))
+  }, [open, product])
+
+  const pending = createProduct.isPending || updateProduct.isPending
 
   async function submit() {
-    const product = await createProduct.mutateAsync({
+    const values = {
       name: name.trim(),
       sku: sku.trim(),
       category,
       unitPrice: Number(unitPrice) || 0,
       stock: Number(stock) || 0,
-    })
-    notify('Product created', { body: product.name })
-    reset()
+    }
+    if (isEdit) {
+      await updateProduct.mutateAsync({ ...product, ...values })
+      track('product_updated', { id: product.id })
+      notify('Product updated', { body: values.name })
+    } else {
+      const created = await createProduct.mutateAsync(values)
+      track('product_created', { id: created.id })
+      notify('Product created', { body: created.name })
+    }
     onOpenChange(false)
   }
 
@@ -59,7 +77,7 @@ export function NewProductDialog({ open, onOpenChange }: NewProductDialogProps) 
     <Dialog open={open} onOpenChange={(_, data) => onOpenChange(data.open)}>
       <DialogSurface>
         <DialogBody>
-          <DialogTitle>New product</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit product' : 'New product'}</DialogTitle>
           <DialogContent
             style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
           >
@@ -103,11 +121,11 @@ export function NewProductDialog({ open, onOpenChange }: NewProductDialogProps) 
             </Button>
             <Button
               appearance="primary"
-              disabled={!valid || createProduct.isPending}
-              icon={createProduct.isPending ? <Spinner size="tiny" /> : undefined}
+              disabled={!valid || pending}
+              icon={pending ? <Spinner size="tiny" /> : undefined}
               onClick={submit}
             >
-              Create
+              {isEdit ? 'Save' : 'Create'}
             </Button>
           </DialogActions>
         </DialogBody>
