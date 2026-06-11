@@ -1,0 +1,170 @@
+import { useParams } from 'react-router-dom'
+import { useResizeHandle } from '@fluentui-contrib/react-resize-handle'
+import {
+  Card,
+  makeStyles,
+  mergeClasses,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+  Text,
+  tokens,
+} from '@fluentui/react-components'
+import { AppLink } from '@/components/AppLink'
+import { PageHeader } from '@/components/PageHeader'
+import { QueryState } from '@/components/QueryState'
+import { OrderStatusBadge } from '@/components/StatusBadge'
+import { useOrder } from '@/hooks/queries'
+import { formatCurrency, formatDate } from '@/lib/format'
+
+const useStyles = makeStyles({
+  splitWrapper: {
+    display: 'flex',
+    alignItems: 'stretch',
+    width: '100%',
+    gap: 0,
+  },
+  master: {
+    width: `clamp(240px, var(--master-width, 320px), 640px)`,
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
+  masterCard: {
+    padding: tokens.spacingVerticalL,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacingVerticalM,
+  },
+  handle: {
+    flexShrink: 0,
+    width: '10px',
+    cursor: 'col-resize',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ':hover': {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
+  },
+  handleBar: {
+    width: '2px',
+    height: '40px',
+    backgroundColor: tokens.colorNeutralStroke1,
+    borderRadius: tokens.borderRadiusSmall,
+  },
+  detail: {
+    flexGrow: 1,
+    minWidth: '280px',
+    paddingLeft: tokens.spacingHorizontalL,
+  },
+  field: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacingVerticalXXS,
+  },
+})
+
+export default function OrderDetailPage() {
+  const styles = useStyles()
+  const { orderId } = useParams()
+  const orderQuery = useOrder(orderId)
+
+  // Resizable master/detail split powered by @fluentui-contrib/react-resize-handle.
+  const { handleRef, wrapperRef, elementRef } = useResizeHandle({
+    growDirection: 'end',
+    variableName: '--master-width',
+    minValue: 240,
+    maxValue: 640,
+    unit: 'px',
+  })
+
+  return (
+    <>
+      <PageHeader
+        title="Order"
+        subtitle="Drag the divider to resize the summary panel."
+      />
+      <QueryState
+        isLoading={orderQuery.isLoading}
+        isError={orderQuery.isError}
+        data={orderQuery.data}
+        loadingLabel="Loading order…"
+        emptyLabel="Order not found."
+      >
+        {(order) => (
+          <div ref={wrapperRef} className={styles.splitWrapper}>
+            <div ref={elementRef} className={styles.master}>
+              <Card className={styles.masterCard}>
+                <div className={styles.field}>
+                  <Text size={200}>Order number</Text>
+                  <Text weight="semibold" size={500}>
+                    {order.orderNumber}
+                  </Text>
+                </div>
+                <div className={styles.field}>
+                  <Text size={200}>Customer</Text>
+                  <Text weight="semibold">{order.customerName}</Text>
+                </div>
+                <div className={styles.field}>
+                  <Text size={200}>Status</Text>
+                  <OrderStatusBadge status={order.status} />
+                </div>
+                <div className={styles.field}>
+                  <Text size={200}>Order date</Text>
+                  <Text weight="semibold">{formatDate(order.orderDate)}</Text>
+                </div>
+                <div className={styles.field}>
+                  <Text size={200}>Total</Text>
+                  <Text weight="semibold">{formatCurrency(order.total)}</Text>
+                </div>
+                <div className={styles.field}>
+                  <Text size={200}>Invoice</Text>
+                  {order.invoice ? (
+                    <AppLink to={`/invoices/${order.invoice.id}`}>
+                      {order.invoice.invoiceNumber}
+                    </AppLink>
+                  ) : (
+                    <Text>No invoice yet</Text>
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            <div ref={handleRef} className={styles.handle}>
+              <div className={mergeClasses(styles.handleBar)} />
+            </div>
+
+            <div className={styles.detail}>
+              <Text as="h2" size={500} weight="semibold" block>
+                Line items
+              </Text>
+              <Table aria-label="Order line items">
+                <TableHeader>
+                  <TableRow>
+                    <TableHeaderCell>Product</TableHeaderCell>
+                    <TableHeaderCell>Quantity</TableHeaderCell>
+                    <TableHeaderCell>Unit price</TableHeaderCell>
+                    <TableHeaderCell>Line total</TableHeaderCell>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {order.lineItems.map((line) => (
+                    <TableRow key={line.id}>
+                      <TableCell>{line.product?.name ?? line.productId}</TableCell>
+                      <TableCell>{line.quantity}</TableCell>
+                      <TableCell>{formatCurrency(line.unitPrice)}</TableCell>
+                      <TableCell>{formatCurrency(line.lineTotal)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+      </QueryState>
+    </>
+  )
+}
