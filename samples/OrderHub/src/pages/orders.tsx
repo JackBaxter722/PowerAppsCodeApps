@@ -1,15 +1,21 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   createTableColumn,
   Dropdown,
-  Field,
   makeStyles,
   Option,
   SearchBox,
-  tokens,
+  ToolbarButton,
+  ToolbarDivider,
   type TableColumnDefinition,
 } from '@fluentui/react-components'
+import {
+  AddRegular,
+  ArrowClockwiseRegular,
+  ArrowExportRegular,
+  DismissRegular,
+} from '@fluentui/react-icons'
 import { AppLink } from '@/components/AppLink'
 import {
   DataGrid,
@@ -19,21 +25,18 @@ import {
   DataGridHeaderCell,
   DataGridRow,
 } from '@fluentui-contrib/react-data-grid-react-window'
+import { NewOrderDialog } from '@/components/dialogs/NewOrderDialog'
 import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
 import { OrderStatusBadge } from '@/components/StatusBadge'
 import { useOrders } from '@/hooks/queries'
+import { exportCsv } from '@/lib/exportCsv'
 import { formatCurrency, formatDate } from '@/lib/format'
+import { useNotify } from '@/lib/toast'
 import { type Order, ORDER_STATUSES } from '@/services/types'
 
 const useStyles = makeStyles({
-  filters: {
-    display: 'flex',
-    gap: tokens.spacingHorizontalM,
-    alignItems: 'flex-end',
-    marginBottom: tokens.spacingVerticalL,
-    flexWrap: 'wrap',
-  },
   grid: {
     minWidth: '760px',
   },
@@ -77,6 +80,8 @@ const columns: TableColumnDefinition<Order>[] = [
 export default function OrdersPage() {
   const styles = useStyles()
   const ordersQuery = useOrders()
+  const notify = useNotify()
+  const [newOpen, setNewOpen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
 
   const statusFilter = searchParams.get('status') ?? ''
@@ -113,6 +118,23 @@ export default function OrdersPage() {
     })
   }, [ordersQuery.data, statusFilter, customerFilter, queryFilter])
 
+  const hasFilters = !!(statusFilter || customerFilter || queryFilter)
+
+  function handleExport() {
+    exportCsv('orders', filtered, [
+      { key: 'orderNumber', header: 'Order' },
+      { key: 'customerName', header: 'Customer' },
+      { key: 'status', header: 'Status' },
+      { key: 'orderDate', header: 'Order date' },
+      { key: 'total', header: 'Total' },
+    ])
+    notify('Exported orders', { body: `${filtered.length} row(s)` })
+  }
+
+  function clearFilters() {
+    setSearchParams({}, { replace: true })
+  }
+
   return (
     <>
       <PageHeader
@@ -120,30 +142,51 @@ export default function OrdersPage() {
         subtitle={`${filtered.length} order(s). Columns are sortable; the grid is virtualized.`}
       />
 
-      <div className={styles.filters}>
-        <Field label="Search">
-          <SearchBox
-            placeholder="Order # or customer"
-            value={queryFilter}
-            onChange={(_, data) => setParam('q', data.value)}
-          />
-        </Field>
-        <Field label="Status">
-          <Dropdown
-            placeholder="All statuses"
-            value={statusFilter}
-            selectedOptions={statusFilter ? [statusFilter] : []}
-            onOptionSelect={(_, data) => setParam('status', data.optionValue ?? '')}
-          >
-            <Option value="">All statuses</Option>
-            {ORDER_STATUSES.map((status) => (
-              <Option key={status} value={status}>
-                {status}
-              </Option>
-            ))}
-          </Dropdown>
-        </Field>
-      </div>
+      <PageToolbar ariaLabel="Orders actions">
+        <ToolbarButton
+          appearance="primary"
+          icon={<AddRegular />}
+          onClick={() => setNewOpen(true)}
+        >
+          New order
+        </ToolbarButton>
+        <ToolbarButton
+          icon={<ArrowClockwiseRegular />}
+          onClick={() => ordersQuery.refetch()}
+          disabled={ordersQuery.isFetching}
+        >
+          Refresh
+        </ToolbarButton>
+        <ToolbarButton icon={<ArrowExportRegular />} onClick={handleExport}>
+          Export
+        </ToolbarButton>
+        <ToolbarDivider />
+        <SearchBox
+          placeholder="Order # or customer"
+          value={queryFilter}
+          onChange={(_, data) => setParam('q', data.value)}
+        />
+        <Dropdown
+          placeholder="All statuses"
+          value={statusFilter}
+          selectedOptions={statusFilter ? [statusFilter] : []}
+          onOptionSelect={(_, data) => setParam('status', data.optionValue ?? '')}
+        >
+          <Option value="">All statuses</Option>
+          {ORDER_STATUSES.map((status) => (
+            <Option key={status} value={status}>
+              {status}
+            </Option>
+          ))}
+        </Dropdown>
+        {hasFilters && (
+          <ToolbarButton icon={<DismissRegular />} onClick={clearFilters}>
+            Clear
+          </ToolbarButton>
+        )}
+      </PageToolbar>
+
+      <NewOrderDialog open={newOpen} onOpenChange={setNewOpen} />
 
       <QueryState
         isLoading={ordersQuery.isLoading}

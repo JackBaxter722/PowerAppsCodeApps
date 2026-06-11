@@ -8,6 +8,9 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import {
+  Dropdown,
+  Option,
+  SearchBox,
   Table,
   TableBody,
   TableCell,
@@ -15,11 +18,22 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  ToolbarButton,
+  ToolbarDivider,
 } from '@fluentui/react-components'
+import {
+  AddRegular,
+  ArrowClockwiseRegular,
+  ArrowExportRegular,
+} from '@fluentui/react-icons'
+import { NewProductDialog } from '@/components/dialogs/NewProductDialog'
 import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
 import { useProducts } from '@/hooks/queries'
+import { exportCsv } from '@/lib/exportCsv'
 import { formatCurrency } from '@/lib/format'
+import { useNotify } from '@/lib/toast'
 import { type Product } from '@/services/types'
 
 const columnHelper = createColumnHelper<Product>()
@@ -95,7 +109,39 @@ function ProductsTable({ products }: { products: Product[] }) {
 
 export default function ProductsPage() {
   const productsQuery = useProducts()
-  const products = useMemo(() => productsQuery.data ?? [], [productsQuery.data])
+  const notify = useNotify()
+  const [newOpen, setNewOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('')
+
+  const all = useMemo(() => productsQuery.data ?? [], [productsQuery.data])
+
+  const categories = useMemo(
+    () => [...new Set(all.map((p) => p.category))].sort(),
+    [all],
+  )
+
+  const products = useMemo(() => {
+    const q = search.toLowerCase()
+    return all.filter((p) => {
+      if (category && p.category !== category) return false
+      if (q && !p.name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) {
+        return false
+      }
+      return true
+    })
+  }, [all, search, category])
+
+  function handleExport() {
+    exportCsv('products', products, [
+      { key: 'name', header: 'Product' },
+      { key: 'sku', header: 'SKU' },
+      { key: 'category', header: 'Category' },
+      { key: 'unitPrice', header: 'Unit price' },
+      { key: 'stock', header: 'In stock' },
+    ])
+    notify('Exported products', { body: `${products.length} row(s)` })
+  }
 
   return (
     <>
@@ -103,6 +149,48 @@ export default function ProductsPage() {
         title="Products"
         subtitle="Catalog backed by a headless TanStack Table with sortable columns."
       />
+
+      <PageToolbar ariaLabel="Products actions">
+        <ToolbarButton
+          appearance="primary"
+          icon={<AddRegular />}
+          onClick={() => setNewOpen(true)}
+        >
+          New product
+        </ToolbarButton>
+        <ToolbarButton
+          icon={<ArrowClockwiseRegular />}
+          onClick={() => productsQuery.refetch()}
+          disabled={productsQuery.isFetching}
+        >
+          Refresh
+        </ToolbarButton>
+        <ToolbarButton icon={<ArrowExportRegular />} onClick={handleExport}>
+          Export
+        </ToolbarButton>
+        <ToolbarDivider />
+        <SearchBox
+          placeholder="Name or SKU"
+          value={search}
+          onChange={(_, data) => setSearch(data.value)}
+        />
+        <Dropdown
+          placeholder="All categories"
+          value={category}
+          selectedOptions={category ? [category] : []}
+          onOptionSelect={(_, data) => setCategory(data.optionValue ?? '')}
+        >
+          <Option value="">All categories</Option>
+          {categories.map((c) => (
+            <Option key={c} value={c}>
+              {c}
+            </Option>
+          ))}
+        </Dropdown>
+      </PageToolbar>
+
+      <NewProductDialog open={newOpen} onOpenChange={setNewOpen} />
+
       <QueryState
         isLoading={productsQuery.isLoading}
         isError={productsQuery.isError}

@@ -11,23 +11,34 @@ export interface DashboardMetrics {
   topProducts: { name: string; revenue: number }[]
 }
 
-export async function getDashboardMetrics(): Promise<DashboardMetrics> {
-  const totalRevenue = Math.round(db.orders.reduce((sum, o) => sum + o.total, 0))
+export type MetricsRange = '30d' | '90d' | 'all'
 
-  const openOrders = db.orders.filter(
-    (o) => o.status !== 'delivered',
-  ).length
+function withinRange(orderDate: string, range: MetricsRange): boolean {
+  if (range === 'all') return true
+  const days = range === '30d' ? 30 : 90
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+  return new Date(orderDate).getTime() >= cutoff
+}
+
+export async function getDashboardMetrics(
+  range: MetricsRange = 'all',
+): Promise<DashboardMetrics> {
+  const orders = db.orders.filter((o) => withinRange(o.orderDate, range))
+
+  const totalRevenue = Math.round(orders.reduce((sum, o) => sum + o.total, 0))
+
+  const openOrders = orders.filter((o) => o.status !== 'delivered').length
 
   const overdueInvoices = db.invoices.filter((i) => i.status === 'overdue').length
 
   const ordersByStatus = ORDER_STATUSES.map((status) => ({
     status,
-    count: db.orders.filter((o) => o.status === status).length,
+    count: orders.filter((o) => o.status === status).length,
   }))
 
   // Revenue aggregated by month from order dates.
   const byMonth = new Map<string, number>()
-  for (const order of db.orders) {
+  for (const order of orders) {
     const month = order.orderDate.slice(0, 7) // YYYY-MM
     byMonth.set(month, (byMonth.get(month) ?? 0) + order.total)
   }
@@ -35,9 +46,11 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, revenue]) => ({ month, revenue: Math.round(revenue) }))
 
-  // Top products by revenue across all order line items.
+  // Top products by revenue across the in-range orders' line items.
+  const orderIds = new Set(orders.map((o) => o.id))
   const productRevenue = new Map<string, number>()
   for (const li of db.orderLineItems) {
+    if (!orderIds.has(li.orderId)) continue
     productRevenue.set(
       li.productId,
       (productRevenue.get(li.productId) ?? 0) + li.lineTotal,

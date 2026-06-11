@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   DonutChart,
   LineChart,
@@ -11,12 +12,29 @@ import {
   makeStyles,
   Text,
   tokens,
+  ToolbarButton,
+  ToolbarDivider,
+  ToolbarRadioButton,
+  ToolbarRadioGroup,
 } from '@fluentui/react-components'
+import {
+  ArrowClockwiseRegular,
+  ArrowExportRegular,
+} from '@fluentui/react-icons'
 import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
 import { useDashboardMetrics } from '@/hooks/queries'
+import { exportCsv } from '@/lib/exportCsv'
 import { formatCurrency } from '@/lib/format'
-import { type DashboardMetrics } from '@/services/metricsService'
+import { useNotify } from '@/lib/toast'
+import { type DashboardMetrics, type MetricsRange } from '@/services/metricsService'
+
+const RANGES: { value: MetricsRange; label: string }[] = [
+  { value: '30d', label: '30 days' },
+  { value: '90d', label: '90 days' },
+  { value: 'all', label: 'All time' },
+]
 
 const useStyles = makeStyles({
   kpiRow: {
@@ -110,7 +128,28 @@ function Charts({ metrics }: { metrics: DashboardMetrics }) {
 
 export default function DashboardPage() {
   const styles = useStyles()
-  const metricsQuery = useDashboardMetrics()
+  const [range, setRange] = useState<MetricsRange>('all')
+  const metricsQuery = useDashboardMetrics(range)
+  const notify = useNotify()
+
+  function handleExport() {
+    const metrics = metricsQuery.data
+    if (!metrics) return
+    exportCsv(
+      'dashboard-kpis',
+      [
+        { metric: 'Total revenue', value: metrics.totalRevenue },
+        { metric: 'Open orders', value: metrics.openOrders },
+        { metric: 'Overdue invoices', value: metrics.overdueInvoices },
+        { metric: 'Products', value: metrics.productCount },
+      ],
+      [
+        { key: 'metric', header: 'Metric' },
+        { key: 'value', header: 'Value' },
+      ],
+    )
+    notify('Exported dashboard KPIs')
+  }
 
   return (
     <>
@@ -118,6 +157,36 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle="Order, invoice, and product performance at a glance."
       />
+      <PageToolbar ariaLabel="Dashboard actions">
+        <ToolbarRadioGroup>
+          {RANGES.map((r) => (
+            <ToolbarRadioButton
+              key={r.value}
+              name="range"
+              value={r.value}
+              appearance={range === r.value ? 'primary' : 'subtle'}
+              onClick={() => setRange(r.value)}
+            >
+              {r.label}
+            </ToolbarRadioButton>
+          ))}
+        </ToolbarRadioGroup>
+        <ToolbarDivider />
+        <ToolbarButton
+          icon={<ArrowClockwiseRegular />}
+          onClick={() => metricsQuery.refetch()}
+          disabled={metricsQuery.isFetching}
+        >
+          Refresh
+        </ToolbarButton>
+        <ToolbarButton
+          icon={<ArrowExportRegular />}
+          onClick={handleExport}
+          disabled={!metricsQuery.data}
+        >
+          Export
+        </ToolbarButton>
+      </PageToolbar>
       <QueryState
         isLoading={metricsQuery.isLoading}
         isError={metricsQuery.isError}

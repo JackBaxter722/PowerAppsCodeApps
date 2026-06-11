@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   Card,
   Divider,
@@ -11,13 +11,23 @@ import {
   TableRow,
   Text,
   tokens,
+  ToolbarButton,
+  ToolbarDivider,
 } from '@fluentui/react-components'
+import {
+  ArrowLeftRegular,
+  CheckmarkCircleRegular,
+  PrintRegular,
+  ReceiptRegular,
+} from '@fluentui/react-icons'
 import { AppLink } from '@/components/AppLink'
 import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
 import { InvoiceStatusBadge } from '@/components/StatusBadge'
-import { useInvoice } from '@/hooks/queries'
+import { useInvoice, useMarkInvoicePaid } from '@/hooks/queries'
 import { formatCurrency, formatDate } from '@/lib/format'
+import { useNotify } from '@/lib/toast'
 
 const useStyles = makeStyles({
   summary: {
@@ -36,8 +46,18 @@ const useStyles = makeStyles({
 
 export default function InvoiceDetailPage() {
   const styles = useStyles()
+  const navigate = useNavigate()
+  const notify = useNotify()
   const { invoiceId } = useParams()
   const invoiceQuery = useInvoice(invoiceId)
+  const markPaid = useMarkInvoicePaid()
+
+  function handleMarkPaid() {
+    if (!invoiceId) return
+    markPaid.mutate(invoiceId, {
+      onSuccess: () => notify('Invoice marked as paid'),
+    })
+  }
 
   return (
     <>
@@ -51,6 +71,37 @@ export default function InvoiceDetailPage() {
       >
         {(invoice) => (
           <>
+            <PageToolbar ariaLabel="Invoice actions">
+              <ToolbarButton
+                icon={<ArrowLeftRegular />}
+                onClick={() => navigate('/invoices')}
+              >
+                Back
+              </ToolbarButton>
+              <ToolbarDivider />
+              <ToolbarButton
+                icon={<CheckmarkCircleRegular />}
+                onClick={handleMarkPaid}
+                disabled={invoice.status === 'paid' || markPaid.isPending}
+              >
+                Mark as paid
+              </ToolbarButton>
+              {invoice.order && (
+                <ToolbarButton
+                  icon={<ReceiptRegular />}
+                  onClick={() => navigate(`/orders/${invoice.order!.id}`)}
+                >
+                  View order
+                </ToolbarButton>
+              )}
+              <ToolbarButton
+                icon={<PrintRegular />}
+                onClick={() => window.print()}
+              >
+                Print
+              </ToolbarButton>
+            </PageToolbar>
+
             <Card className={styles.summary}>
               <div className={styles.field}>
                 <Text size={200}>Invoice number</Text>

@@ -13,11 +13,22 @@ import {
 import {
   Caption1,
   Card,
+  Dropdown,
   makeStyles,
+  Option,
   Text,
   tokens,
+  ToolbarButton,
+  ToolbarDivider,
+  ToolbarToggleButton,
 } from '@fluentui/react-components'
+import {
+  ArrowClockwiseRegular,
+  ArrowResetRegular,
+  TextCollapseRegular,
+} from '@fluentui/react-icons'
 import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
 import { useOrders, useUpdateOrderStatus } from '@/hooks/queries'
 import { formatCurrency } from '@/lib/format'
@@ -63,7 +74,7 @@ const useStyles = makeStyles({
   },
 })
 
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({ order, compact }: { order: Order; compact: boolean }) {
   const styles = useStyles()
   const navigate = useNavigate()
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -84,7 +95,7 @@ function OrderCard({ order }: { order: Order }) {
     >
       <Text weight="semibold">{order.orderNumber}</Text>
       <Caption1 block>{order.customerName}</Caption1>
-      <Caption1 block>{formatCurrency(order.total)}</Caption1>
+      {!compact && <Caption1 block>{formatCurrency(order.total)}</Caption1>}
     </Card>
   )
 }
@@ -92,9 +103,11 @@ function OrderCard({ order }: { order: Order }) {
 function Column({
   status,
   orders,
+  compact,
 }: {
   status: OrderStatus
   orders: Order[]
+  compact: boolean
 }) {
   const styles = useStyles()
   const { setNodeRef, isOver } = useDroppable({ id: status })
@@ -110,7 +123,7 @@ function Column({
       </div>
       <div className={styles.cardList}>
         {orders.map((order) => (
-          <OrderCard key={order.id} order={order} />
+          <OrderCard key={order.id} order={order} compact={compact} />
         ))}
       </div>
     </div>
@@ -127,6 +140,13 @@ export default function FulfillmentPage() {
 
   // Optimistic local override so cards move instantly while the mutation runs.
   const [override, setOverride] = useState<Record<string, OrderStatus>>({})
+  const [customer, setCustomer] = useState('')
+  const [compact, setCompact] = useState(false)
+
+  const customers = useMemo(
+    () => [...new Set((ordersQuery.data ?? []).map((o) => o.customerName))].sort(),
+    [ordersQuery.data],
+  )
 
   const grouped = useMemo(() => {
     const map: Record<OrderStatus, Order[]> = {
@@ -137,11 +157,12 @@ export default function FulfillmentPage() {
       delivered: [],
     }
     for (const order of ordersQuery.data ?? []) {
+      if (customer && order.customerName !== customer) continue
       const status = override[order.id] ?? order.status
       map[status].push({ ...order, status })
     }
     return map
-  }, [ordersQuery.data, override])
+  }, [ordersQuery.data, override, customer])
 
   function handleDragEnd(event: DragEndEvent) {
     const orderId = String(event.active.id)
@@ -161,6 +182,49 @@ export default function FulfillmentPage() {
         title="Fulfillment board"
         subtitle="Drag orders between stages to update their status. Double-click a card to open it."
       />
+      <PageToolbar
+        ariaLabel="Fulfillment actions"
+        checkedValues={{ density: compact ? ['compact'] : [] }}
+        onCheckedValueChange={(_, { checkedItems }) =>
+          setCompact(checkedItems.includes('compact'))
+        }
+      >
+        <ToolbarButton
+          icon={<ArrowClockwiseRegular />}
+          onClick={() => ordersQuery.refetch()}
+          disabled={ordersQuery.isFetching}
+        >
+          Refresh
+        </ToolbarButton>
+        <ToolbarButton
+          icon={<ArrowResetRegular />}
+          onClick={() => setOverride({})}
+          disabled={Object.keys(override).length === 0}
+        >
+          Reset board
+        </ToolbarButton>
+        <ToolbarToggleButton
+          name="density"
+          value="compact"
+          icon={<TextCollapseRegular />}
+        >
+          Compact
+        </ToolbarToggleButton>
+        <ToolbarDivider />
+        <Dropdown
+          placeholder="All customers"
+          value={customer}
+          selectedOptions={customer ? [customer] : []}
+          onOptionSelect={(_, data) => setCustomer(data.optionValue ?? '')}
+        >
+          <Option value="">All customers</Option>
+          {customers.map((c) => (
+            <Option key={c} value={c}>
+              {c}
+            </Option>
+          ))}
+        </Dropdown>
+      </PageToolbar>
       <QueryState
         isLoading={ordersQuery.isLoading}
         isError={ordersQuery.isError}
@@ -175,7 +239,12 @@ export default function FulfillmentPage() {
           >
             <div className={styles.board}>
               {ORDER_STATUSES.map((status) => (
-                <Column key={status} status={status} orders={grouped[status]} />
+                <Column
+                  key={status}
+                  status={status}
+                  orders={grouped[status]}
+                  compact={compact}
+                />
               ))}
             </div>
           </DndContext>

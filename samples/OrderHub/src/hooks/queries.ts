@@ -7,14 +7,31 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { getDashboardMetrics } from '@/services/metricsService'
 import {
+  getDashboardMetrics,
+  type MetricsRange,
+} from '@/services/metricsService'
+import {
+  createOrder,
   getOrder,
   getOrders,
   updateOrderStatus,
+  type NewOrderInput,
 } from '@/services/ordersService'
-import { getInvoice, getInvoices } from '@/services/invoicesService'
-import { getProduct, getProducts } from '@/services/productsService'
+import {
+  createInvoice,
+  getInvoice,
+  getInvoiceableOrders,
+  getInvoices,
+  markInvoicePaid,
+  type NewInvoiceInput,
+} from '@/services/invoicesService'
+import {
+  createProduct,
+  getProduct,
+  getProducts,
+  type NewProductInput,
+} from '@/services/productsService'
 import { type OrderStatus } from '@/services/types'
 
 export const queryKeys = {
@@ -23,8 +40,9 @@ export const queryKeys = {
   products: ['products'] as const,
   product: (id: string) => ['products', id] as const,
   invoices: ['invoices'] as const,
+  invoiceableOrders: ['invoices', 'invoiceable'] as const,
   invoice: (id: string) => ['invoices', id] as const,
-  metrics: ['metrics'] as const,
+  metrics: (range: MetricsRange) => ['metrics', range] as const,
 }
 
 export function useOrders() {
@@ -63,8 +81,23 @@ export function useInvoice(id: string | undefined) {
   })
 }
 
-export function useDashboardMetrics() {
-  return useQuery({ queryKey: queryKeys.metrics, queryFn: getDashboardMetrics })
+export function useInvoiceableOrders() {
+  return useQuery({
+    queryKey: queryKeys.invoiceableOrders,
+    queryFn: getInvoiceableOrders,
+  })
+}
+
+export function useDashboardMetrics(range: MetricsRange) {
+  return useQuery({
+    queryKey: queryKeys.metrics(range),
+    queryFn: () => getDashboardMetrics(range),
+  })
+}
+
+// All metrics variants share a stale source, so invalidate the whole family.
+function invalidateMetrics(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ['metrics'] })
 }
 
 export function useUpdateOrderStatus() {
@@ -74,7 +107,54 @@ export function useUpdateOrderStatus() {
       updateOrderStatus(id, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.orders })
-      queryClient.invalidateQueries({ queryKey: queryKeys.metrics })
+      invalidateMetrics(queryClient)
+    },
+  })
+}
+
+export function useCreateProduct() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: NewProductInput) => createProduct(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products })
+      invalidateMetrics(queryClient)
+    },
+  })
+}
+
+export function useCreateOrder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: NewOrderInput) => createOrder(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoiceableOrders })
+      invalidateMetrics(queryClient)
+    },
+  })
+}
+
+export function useCreateInvoice() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: NewInvoiceInput) => createInvoice(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoiceableOrders })
+      invalidateMetrics(queryClient)
+    },
+  })
+}
+
+export function useMarkInvoicePaid() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => markInvoicePaid(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoice(id) })
+      invalidateMetrics(queryClient)
     },
   })
 }

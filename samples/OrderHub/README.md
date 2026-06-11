@@ -38,6 +38,26 @@ TanStack Query hooks in `src/hooks/queries.ts`.
 - `/invoices/:invoiceId` — Invoice detail
 - `/assistant` — Chat assistant
 
+## Per-page toolbars
+
+Every page renders a Fluent `Toolbar` (`src/components/PageToolbar.tsx`) directly
+below its header, with actions tailored to that page:
+
+| Page | Toolbar actions |
+| --- | --- |
+| Dashboard | Time range (`ToolbarRadioGroup`) · Refresh · Export KPIs |
+| Orders | New order (dialog) · Refresh · Export · Search + Status filter · Clear |
+| Order detail | Back · Set status (menu) · View invoice · Print |
+| Fulfillment | Refresh · Reset board · Compact (`ToolbarToggleButton`) · Customer filter |
+| Products | New product (dialog) · Refresh · Export · Search + Category filter |
+| Invoices | New invoice (dialog) · Refresh · Export · Status filter |
+| Invoice detail | Back · Mark as paid · View order · Print |
+| Assistant | New conversation · Clear · Persona (`ToolbarRadioGroup`) |
+
+The "New …" actions open Fluent `Dialog` forms (`src/components/dialogs/`) that add
+records to the in-memory mock data via TanStack Query mutations; toolbar actions
+surface feedback through a shared Fluent `Toaster` mounted in the layout.
+
 ## Deep linking
 
 On startup `src/hooks/useDeepLink.ts` reads `getContext().app.queryParams` and

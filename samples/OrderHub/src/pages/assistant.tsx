@@ -5,9 +5,20 @@ import {
   makeStyles,
   Textarea,
   tokens,
+  ToolbarButton,
+  ToolbarDivider,
+  ToolbarRadioButton,
+  ToolbarRadioGroup,
 } from '@fluentui/react-components'
-import { SendRegular } from '@fluentui/react-icons'
+import {
+  AddRegular,
+  DeleteRegular,
+  SendRegular,
+} from '@fluentui/react-icons'
 import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
+
+type Persona = 'concise' | 'detailed'
 
 interface Message {
   id: number
@@ -64,14 +75,20 @@ export default function AssistantPage() {
   const styles = useStyles()
   const [messages, setMessages] = useState<Message[]>(INITIAL)
   const [draft, setDraft] = useState('')
+  const [persona, setPersona] = useState<Persona>('concise')
 
   function send() {
     const trimmed = draft.trim()
     if (!trimmed) return
+    const reply = mockReply(trimmed)
+    const text =
+      persona === 'detailed'
+        ? `${reply} Let me know if you'd like step-by-step guidance.`
+        : reply
     setMessages((prev) => [
       ...prev,
       { id: prev.length, mine: true, text: trimmed },
-      { id: prev.length + 1, mine: false, text: mockReply(trimmed) },
+      { id: prev.length + 1, mine: false, text },
     ])
     setDraft('')
   }
@@ -82,6 +99,43 @@ export default function AssistantPage() {
         title="Assistant"
         subtitle="Order-support chat built with @fluentui-contrib/react-chat (mock replies)."
       />
+      <PageToolbar ariaLabel="Assistant actions">
+        <ToolbarButton
+          icon={<AddRegular />}
+          onClick={() => {
+            setMessages(INITIAL)
+            setDraft('')
+          }}
+        >
+          New conversation
+        </ToolbarButton>
+        <ToolbarButton
+          icon={<DeleteRegular />}
+          onClick={() => setMessages([])}
+          disabled={messages.length === 0}
+        >
+          Clear
+        </ToolbarButton>
+        <ToolbarDivider />
+        <ToolbarRadioGroup>
+          <ToolbarRadioButton
+            name="persona"
+            value="concise"
+            appearance={persona === 'concise' ? 'primary' : 'subtle'}
+            onClick={() => setPersona('concise')}
+          >
+            Concise
+          </ToolbarRadioButton>
+          <ToolbarRadioButton
+            name="persona"
+            value="detailed"
+            appearance={persona === 'detailed' ? 'primary' : 'subtle'}
+            onClick={() => setPersona('detailed')}
+          >
+            Detailed
+          </ToolbarRadioButton>
+        </ToolbarRadioGroup>
+      </PageToolbar>
       <div className={styles.container}>
         <Chat className={styles.thread}>
           {messages.map((message) =>

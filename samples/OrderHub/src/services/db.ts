@@ -170,6 +170,14 @@ function seed(): Database {
 
 export const db: Database = seed()
 
+// Monotonic id generator for records created at runtime (via the toolbar
+// "New …" dialogs), keeping ids unique regardless of array length.
+const counters: Record<string, number> = {}
+export function nextId(prefix: string): string {
+  counters[prefix] = (counters[prefix] ?? 1000) + 1
+  return `${prefix}-${counters[prefix]}`
+}
+
 // Simulate network latency so TanStack Query loading states are exercised.
 export function delay<T>(value: T, ms = 150): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms))

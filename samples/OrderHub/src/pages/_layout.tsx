@@ -12,6 +12,7 @@ import {
   Tab,
   TabList,
   Text,
+  Toaster,
   tokens,
   type SelectTabEvent,
   type SelectTabData,
@@ -29,6 +30,7 @@ import {
 } from '@fluentui/react-icons'
 import { useDeepLink } from '@/hooks/useDeepLink'
 import { useThemeMode } from '@/lib/theme-context'
+import { TOASTER_ID } from '@/lib/toast'
 
 const useStyles = makeStyles({
   root: {
@@ -159,6 +161,8 @@ export default function Layout() {
           <Outlet />
         </Suspense>
       </main>
+
+      <Toaster toasterId={TOASTER_ID} />
     </div>
   )
 }

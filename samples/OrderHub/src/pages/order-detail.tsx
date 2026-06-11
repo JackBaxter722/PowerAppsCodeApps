@@ -1,8 +1,13 @@
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useResizeHandle } from '@fluentui-contrib/react-resize-handle'
 import {
   Card,
   makeStyles,
+  Menu,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
   mergeClasses,
   Table,
   TableBody,
@@ -12,13 +17,24 @@ import {
   TableRow,
   Text,
   tokens,
+  ToolbarButton,
+  ToolbarDivider,
 } from '@fluentui/react-components'
+import {
+  ArrowLeftRegular,
+  ArrowSortRegular,
+  PrintRegular,
+  ReceiptRegular,
+} from '@fluentui/react-icons'
 import { AppLink } from '@/components/AppLink'
 import { PageHeader } from '@/components/PageHeader'
+import { PageToolbar } from '@/components/PageToolbar'
 import { QueryState } from '@/components/QueryState'
 import { OrderStatusBadge } from '@/components/StatusBadge'
-import { useOrder } from '@/hooks/queries'
+import { useOrder, useUpdateOrderStatus } from '@/hooks/queries'
 import { formatCurrency, formatDate } from '@/lib/format'
+import { useNotify } from '@/lib/toast'
+import { ORDER_STATUSES, type OrderStatus } from '@/services/types'
 
 const useStyles = makeStyles({
   splitWrapper: {
@@ -69,8 +85,19 @@ const useStyles = makeStyles({
 
 export default function OrderDetailPage() {
   const styles = useStyles()
+  const navigate = useNavigate()
+  const notify = useNotify()
   const { orderId } = useParams()
   const orderQuery = useOrder(orderId)
+  const updateStatus = useUpdateOrderStatus()
+
+  function changeStatus(status: OrderStatus) {
+    if (!orderId) return
+    updateStatus.mutate(
+      { id: orderId, status },
+      { onSuccess: () => notify('Order status updated', { body: status }) },
+    )
+  }
 
   // Resizable master/detail split powered by @fluentui-contrib/react-resize-handle.
   const { handleRef, wrapperRef, elementRef } = useResizeHandle({
@@ -95,6 +122,54 @@ export default function OrderDetailPage() {
         emptyLabel="Order not found."
       >
         {(order) => (
+          <>
+          <PageToolbar ariaLabel="Order actions">
+            <ToolbarButton
+              icon={<ArrowLeftRegular />}
+              onClick={() => navigate('/orders')}
+            >
+              Back
+            </ToolbarButton>
+            <ToolbarDivider />
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <ToolbarButton
+                  icon={<ArrowSortRegular />}
+                  disabled={updateStatus.isPending}
+                >
+                  Set status
+                </ToolbarButton>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  {ORDER_STATUSES.map((status) => (
+                    <MenuItem
+                      key={status}
+                      disabled={status === order.status}
+                      onClick={() => changeStatus(status)}
+                    >
+                      {status}
+                    </MenuItem>
+                  ))}
+                </MenuList>
+              </MenuPopover>
+            </Menu>
+            {order.invoice && (
+              <ToolbarButton
+                icon={<ReceiptRegular />}
+                onClick={() => navigate(`/invoices/${order.invoice!.id}`)}
+              >
+                View invoice
+              </ToolbarButton>
+            )}
+            <ToolbarButton
+              icon={<PrintRegular />}
+              onClick={() => window.print()}
+            >
+              Print
+            </ToolbarButton>
+          </PageToolbar>
+
           <div ref={wrapperRef} className={styles.splitWrapper}>
             <div ref={elementRef} className={styles.master}>
               <Card className={styles.masterCard}>
@@ -163,6 +238,7 @@ export default function OrderDetailPage() {
               </Table>
             </div>
           </div>
+          </>
         )}
       </QueryState>
     </>
