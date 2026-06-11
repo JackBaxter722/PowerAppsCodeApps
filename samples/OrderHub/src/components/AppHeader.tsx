@@ -1,6 +1,6 @@
-import { Hamburger } from '@fluentui/react-nav-preview'
 import {
   Button,
+  Hamburger,
   makeStyles,
   Text,
   tokens,

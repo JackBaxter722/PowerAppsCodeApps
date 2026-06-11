@@ -16,18 +16,19 @@ It demonstrates a modern front-end stack running inside the Power Apps host, and
 | Resizable panels | [`@fluentui-contrib/react-resize-handle`](https://github.com/microsoft/fluentui-contrib) | Order detail |
 | Keyboard tips | [`@fluentui-contrib/react-keytips`](https://github.com/microsoft/fluentui-contrib) | Nav rail (press `Alt`) |
 | Chat UI | [`@fluentui-contrib/react-chat`](https://github.com/microsoft/fluentui-contrib) | Assistant |
-| Collapsible nav | [`@fluentui/react-nav-preview`](https://react.fluentui.dev/) | App shell |
+| Collapsible nav | `Nav`/`NavDrawer` from [`@fluentui/react-components`](https://react.fluentui.dev/) | App shell |
 | Drag & drop | [`@dnd-kit`](https://dndkit.com/) core + sortable | Fulfillment board |
 | Data / state | [TanStack Query](https://tanstack.com/query) + [TanStack Table](https://tanstack.com/table) | hooks + Products |
 
 ## App shell
 
 - **Header** (`src/components/AppHeader.tsx`) — left-aligned logo + title, a
-  **typeahead SearchBox** (`GlobalSearch`, a Fluent `Combobox`) that searches across
-  orders, invoices, and products and navigates to the chosen record, a theme toggle,
-  and an **Avatar** whose **Popover** shows the signed-in user from `getContext()`.
-- **Collapsible NavDrawer** — the header hamburger minimizes/expands the side nav.
-  Nav items carry keytips (press `Alt`).
+  **typeahead `SearchBox`** (`GlobalSearch`) that filters a suggestion listbox across
+  orders, invoices, and products (arrow keys + Enter, click to navigate), a theme
+  toggle, and an **Avatar** whose **Popover** shows the signed-in user from `getContext()`.
+- **Collapsible `NavDrawer`** — the header hamburger collapses/expands the side nav.
+  The nav stays **always visible**: collapsing minimizes it to an icon **rail**
+  (labels move into tooltips) rather than hiding it. Nav items carry keytips (`Alt`).
 
 ## Domain
 

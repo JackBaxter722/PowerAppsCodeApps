@@ -5,13 +5,13 @@ import {
   NavDrawer,
   NavDrawerBody,
   NavItem,
-  type OnNavItemSelectData,
-} from '@fluentui/react-nav-preview'
-import {
-  makeStyles,
   Spinner,
   Toaster,
+  Tooltip,
+  makeStyles,
+  mergeClasses,
   tokens,
+  type OnNavItemSelectData,
 } from '@fluentui/react-components'
 import {
   AppsListRegular,
@@ -38,6 +38,20 @@ const useStyles = makeStyles({
     display: 'flex',
     flexGrow: 1,
     minHeight: 0,
+  },
+  // The drawer is always rendered (never hidden); collapsing only minimizes its
+  // width to an icon rail.
+  drawer: {
+    transition: 'width 0.2s ease',
+    height: '100%',
+  },
+  drawerExpanded: {
+    width: '260px',
+  },
+  drawerRail: {
+    width: '48px',
+    minWidth: '48px',
+    overflowX: 'hidden',
   },
   content: {
     flexGrow: 1,
@@ -68,17 +82,38 @@ const NAV: NavEntry[] = [
   { value: '/assistant', label: 'Assistant', icon: ChatRegular, keytip: 'a' },
 ]
 
-function NavEntryItem({ entry }: { entry: NavEntry }) {
+function NavEntryItem({
+  entry,
+  collapsed,
+}: {
+  entry: NavEntry
+  collapsed: boolean
+}) {
   // Each nav item registers a keytip (press Alt to reveal) via the contrib lib.
   const keytipRef = useKeytipRef<HTMLAnchorElement | HTMLButtonElement>({
     content: entry.keytip.toUpperCase(),
     keySequences: [entry.keytip],
   })
   const Icon = entry.icon
-  return (
-    <NavItem ref={keytipRef} value={entry.value} icon={<Icon />}>
-      {entry.label}
+
+  const item = (
+    <NavItem
+      ref={keytipRef}
+      value={entry.value}
+      icon={<Icon />}
+      aria-label={entry.label}
+    >
+      {collapsed ? undefined : entry.label}
     </NavItem>
+  )
+
+  // When collapsed the label is hidden, so expose it via a tooltip.
+  return collapsed ? (
+    <Tooltip content={entry.label} relationship="label" positioning="after">
+      {item}
+    </Tooltip>
+  ) : (
+    item
   )
 }
 
@@ -93,7 +128,7 @@ export default function Layout() {
   const styles = useStyles()
   const navigate = useNavigate()
   const location = useLocation()
-  const [navOpen, setNavOpen] = useState(true)
+  const [navExpanded, setNavExpanded] = useState(true)
   const notify = useNotify()
 
   // Read Power Apps getContext query params on startup and deep-link accordingly.
@@ -118,18 +153,27 @@ export default function Layout() {
 
   return (
     <div className={styles.root}>
-      <AppHeader onToggleNav={() => setNavOpen((o) => !o)} />
+      <AppHeader onToggleNav={() => setNavExpanded((o) => !o)} />
 
       <div className={styles.body}>
         <NavDrawer
-          open={navOpen}
+          // Always open: collapsing minimizes width to a rail rather than hiding.
+          open
           type="inline"
           selectedValue={selectedTab(location.pathname)}
           onNavItemSelect={onNavItemSelect}
+          className={mergeClasses(
+            styles.drawer,
+            navExpanded ? styles.drawerExpanded : styles.drawerRail,
+          )}
         >
           <NavDrawerBody>
             {NAV.map((entry) => (
-              <NavEntryItem key={entry.value} entry={entry} />
+              <NavEntryItem
+                key={entry.value}
+                entry={entry}
+                collapsed={!navExpanded}
+              />
             ))}
           </NavDrawerBody>
         </NavDrawer>

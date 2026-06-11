@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Combobox,
-  Option,
-  makeStyles,
+  SearchBox,
   Text,
+  makeStyles,
+  mergeClasses,
+  shorthands,
   tokens,
-  type ComboboxProps,
 } from '@fluentui/react-components'
 import {
   BoxRegular,
@@ -16,12 +16,47 @@ import {
 import { useInvoices, useOrders, useProducts } from '@/hooks/queries'
 
 const useStyles = makeStyles({
-  combobox: {
-    minWidth: '280px',
+  root: {
+    position: 'relative',
+    minWidth: '300px',
   },
-  optionMeta: {
+  listbox: {
+    position: 'absolute',
+    top: 'calc(100% + 4px)',
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    backgroundColor: tokens.colorNeutralBackground1,
+    ...shorthands.border('1px', 'solid', tokens.colorNeutralStroke1),
+    borderRadius: tokens.borderRadiusMedium,
+    boxShadow: tokens.shadow16,
+    paddingTop: tokens.spacingVerticalXS,
+    paddingBottom: tokens.spacingVerticalXS,
+    maxHeight: '320px',
+    overflowY: 'auto',
+  },
+  option: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalS,
+    paddingTop: tokens.spacingVerticalSNudge,
+    paddingBottom: tokens.spacingVerticalSNudge,
+    paddingLeft: tokens.spacingHorizontalM,
+    paddingRight: tokens.spacingHorizontalM,
+    cursor: 'pointer',
+  },
+  optionActive: {
+    backgroundColor: tokens.colorNeutralBackground1Hover,
+  },
+  meta: {
     color: tokens.colorNeutralForeground3,
-    marginLeft: tokens.spacingHorizontalS,
+    marginLeft: 'auto',
+  },
+  empty: {
+    paddingTop: tokens.spacingVerticalS,
+    paddingBottom: tokens.spacingVerticalS,
+    paddingLeft: tokens.spacingHorizontalM,
+    color: tokens.colorNeutralForeground3,
   },
 })
 
@@ -39,15 +74,21 @@ const ICONS = {
   product: DocumentRegular,
 }
 
-// A typeahead SearchBox (Fluent Combobox) that searches across orders,
-// invoices, and products and navigates to the chosen record.
+const LISTBOX_ID = 'global-search-listbox'
+
+// A Fluent SearchBox with a typeahead suggestion list that searches across
+// orders, invoices, and products and navigates to the chosen record.
 export function GlobalSearch() {
   const styles = useStyles()
   const navigate = useNavigate()
   const orders = useOrders()
   const invoices = useInvoices()
   const products = useProducts()
+
   const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const blurTimer = useRef<number>()
 
   const entries = useMemo<SearchEntry[]>(() => {
     const result: SearchEntry[] = []
@@ -72,7 +113,7 @@ export function GlobalSearch() {
     for (const p of products.data ?? []) {
       result.push({
         key: p.id,
-        to: `/products`,
+        to: `/products?q=${encodeURIComponent(p.name)}`,
         primary: p.name,
         secondary: p.sku,
         kind: 'product',
@@ -93,45 +134,106 @@ export function GlobalSearch() {
       .slice(0, 8)
   }, [entries, query])
 
-  const onOptionSelect: ComboboxProps['onOptionSelect'] = (_, data) => {
-    if (data.optionValue) {
-      navigate(data.optionValue)
-      setQuery('')
+  const showList = open && query.trim().length > 0
+
+  function select(entry: SearchEntry) {
+    navigate(entry.to)
+    setQuery('')
+    setOpen(false)
+  }
+
+  function onChange(value: string) {
+    setQuery(value)
+    setOpen(true)
+    setActiveIndex(0)
+  }
+
+  function onKeyDown(event: React.KeyboardEvent) {
+    if (!showList && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      setOpen(true)
+      return
+    }
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault()
+        setActiveIndex((i) => Math.min(i + 1, matches.length - 1))
+        break
+      case 'ArrowUp':
+        event.preventDefault()
+        setActiveIndex((i) => Math.max(i - 1, 0))
+        break
+      case 'Enter':
+        if (showList && matches[activeIndex]) {
+          event.preventDefault()
+          select(matches[activeIndex])
+        }
+        break
+      case 'Escape':
+        setOpen(false)
+        break
     }
   }
 
   return (
-    <Combobox
-      className={styles.combobox}
-      placeholder="Search orders, invoices, products…"
-      freeform
-      clearable
-      value={query}
-      onChange={(e) => setQuery(e.target.value)}
-      onOptionSelect={onOptionSelect}
-      aria-label="Global search"
-    >
-      {matches.map((entry) => {
-        const Icon = ICONS[entry.kind]
-        return (
-          <Option
-            key={`${entry.kind}-${entry.key}`}
-            value={entry.to}
-            text={entry.primary}
-          >
-            <Icon />
-            <Text>{entry.primary}</Text>
-            <Text size={200} className={styles.optionMeta}>
-              {entry.secondary}
-            </Text>
-          </Option>
-        )
-      })}
-      {query.trim() && matches.length === 0 && (
-        <Option value="" disabled text="No results">
-          No results
-        </Option>
+    <div className={styles.root}>
+      <SearchBox
+        placeholder="Search orders, invoices, products…"
+        value={query}
+        onChange={(_, data) => onChange(data.value)}
+        onFocus={() => query && setOpen(true)}
+        onBlur={() => {
+          // Delay so a click on an option registers before the list closes.
+          blurTimer.current = window.setTimeout(() => setOpen(false), 150)
+        }}
+        onKeyDown={onKeyDown}
+        input={{
+          role: 'combobox',
+          'aria-expanded': showList,
+          'aria-controls': LISTBOX_ID,
+          'aria-autocomplete': 'list',
+          'aria-activedescendant': showList
+            ? `gs-opt-${activeIndex}`
+            : undefined,
+        }}
+        aria-label="Global search"
+      />
+
+      {showList && (
+        <div id={LISTBOX_ID} role="listbox" className={styles.listbox}>
+          {matches.length === 0 ? (
+            <Text className={styles.empty}>No results</Text>
+          ) : (
+            matches.map((entry, index) => {
+              const Icon = ICONS[entry.kind]
+              return (
+                <div
+                  key={`${entry.kind}-${entry.key}`}
+                  id={`gs-opt-${index}`}
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  className={mergeClasses(
+                    styles.option,
+                    index === activeIndex && styles.optionActive,
+                  )}
+                  onMouseDown={(e) => {
+                    // Prevent the SearchBox from losing focus before the click.
+                    e.preventDefault()
+                    clearTimeout(blurTimer.current)
+                  }}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => select(entry)}
+                >
+                  <Icon />
+                  <Text>{entry.primary}</Text>
+                  <Text size={200} className={styles.meta}>
+                    {entry.secondary}
+                  </Text>
+                </div>
+              )
+            })
+          )}
+        </div>
       )}
-    </Combobox>
+    </div>
   )
 }
